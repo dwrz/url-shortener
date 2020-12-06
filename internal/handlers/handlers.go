@@ -2,15 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
-	"net/http"
-
 	"github.com/dwrz/url-shortener/internal/shorturl"
 	"github.com/dwrz/url-shortener/internal/validurl"
 	"github.com/dwrz/url-shortener/internal/visit"
-	
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/mongo"
+	"log"
+	"net/http"
 )
 
 // handler is used to store values needed by methods implementing the
@@ -38,12 +36,12 @@ func (h handler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid url", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Generate the short URL and create a DB document.
 	short, err := shorturl.Create(r.Context(), shorturl.CreateParams{
-		DB: h.db,
+		DB:          h.db,
 		Environment: h.environment,
-		LongURL: longURL,
+		LongURL:     longURL,
 	})
 	if err != nil {
 		log.Printf("failed to create short url: %v", err)
@@ -64,9 +62,9 @@ func (h handler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve the short URL.
 	s, err := shorturl.Get(r.Context(), shorturl.GetParams{
-		DB: h.db,
+		DB:          h.db,
 		Environment: h.environment,
-		Short: pathParams["short"],
+		Short:       pathParams["short"],
 	})
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -75,9 +73,9 @@ func (h handler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	// Create a visit record.
 	if err := visit.Create(r.Context(), visit.CreateParams{
-		DB: h.db,
+		DB:          h.db,
 		Environment: h.environment,
-		ShortID: s.ID,
+		ShortID:     s.ID,
 	}); err != nil {
 		log.Printf("failed to create visit record: %v", err)
 		http.Error(w, "server error", http.StatusInternalServerError)
@@ -96,9 +94,9 @@ func (h handler) Stats(w http.ResponseWriter, r *http.Request) {
 
 	// Retrieve the short URL.
 	s, err := shorturl.Get(r.Context(), shorturl.GetParams{
-		DB: h.db,
+		DB:          h.db,
 		Environment: h.environment,
-		Short: pathParams["short"],
+		Short:       pathParams["short"],
 	})
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -107,9 +105,9 @@ func (h handler) Stats(w http.ResponseWriter, r *http.Request) {
 
 	// Get the visited stats for this short URL.
 	stats, err := visit.GetStats(r.Context(), visit.GetStatsParams{
-		DB: h.db,
+		DB:          h.db,
 		Environment: h.environment,
-		ShortID: s.ID,
+		ShortID:     s.ID,
 	})
 	if err != nil {
 		log.Printf("failed to get stats: %v", err)
@@ -122,8 +120,41 @@ func (h handler) Stats(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		log.Printf("failed to json encode stats: %v", err)
 	}
+
 }
 
 // status is used as a health check for this service.
 // It should respond with a 200 HTTP Status OK and an empty body.
-func status(w http.ResponseWriter, r *http.Request) { w.Write([]byte{}) }
+func (h handler) Status(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Query().Get("stats") == "true":
+		shortURLCount, err := shorturl.CountURLs(
+			r.Context(), shorturl.CountParams{
+				DB:          h.db,
+				Environment: h.environment,
+			},
+		)
+		if err != nil {
+			http.Error(
+				w, err.Error(), http.StatusInternalServerError,
+			)
+			return
+		}
+		response := struct {
+			ShortURLCount int64 `json:"shortURLCount"`
+		}{ShortURLCount: shortURLCount}
+		j, err := json.Marshal(response)
+		if err != nil {
+			http.Error(
+				w, err.Error(), http.StatusInternalServerError,
+			)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(j)
+	default:
+		w.Write([]byte{})
+	}
+}

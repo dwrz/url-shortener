@@ -3,7 +3,6 @@ package shorturl
 import (
 	"context"
 	"fmt"
-
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -35,6 +34,7 @@ func Get(ctx context.Context, p GetParams) (short *ShortURL, err error) {
 	}
 
 	coll := p.DB.Database(p.Environment).Collection(Collection)
+
 	findContext, cancel := context.WithTimeout(ctx, findTimeout)
 	defer cancel()
 
